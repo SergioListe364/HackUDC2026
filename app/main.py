@@ -226,9 +226,10 @@ class NoteOut(BaseModel):
 
 
 class BatchSaveItem(BaseModel):
-    idea:     str
-    group:    str
-    subgroup: Optional[str] = None
+    idea:       str
+    group:      str
+    subgroup:   Optional[str] = None
+    source_url: Optional[str] = None
 
 class BatchSaveIn(BaseModel):
     items:  list[BatchSaveItem]
@@ -261,7 +262,22 @@ def _process_single_ai(ai: dict, note: "NoteIn", db: Session) -> "NoteOut":
             fire_at = datetime.fromisoformat(remind_at_str) if remind_at_str else datetime.now() + timedelta(minutes=5)
         except (ValueError, TypeError):
             fire_at = datetime.now() + timedelta(minutes=5)
-        message = ai.get("idea") or note.content
+        # Safeguard: if the LLM returned a past time, push to next day
+        if fire_at <= datetime.now():
+            fire_at += timedelta(days=1)
+        raw_message = ai.get("idea") or note.content
+        # Strip any date/time suffix the LLM may have appended to the idea text
+        # e.g. "gimnasio dom 1 mar 20:00" → "gimnasio"
+        # Match: optional weekday abbrev (3 chars) + day number + month abbrev + optional HH:MM
+        message = _re.sub(
+            r'\s+[a-z\u00e1\u00e9\u00ed\u00f3\u00fa]{3}\s+\d{1,2}\s+[a-z\u00e1\u00e9\u00ed\u00f3\u00fa]{3}(?:\s+\d{1,2}:\d{2})?\s*$',
+            '', raw_message, flags=_re.IGNORECASE
+        ).strip()
+        # Also strip standalone " a las HH:MM" or " HH:MM" at the end
+        message = _re.sub(
+            r'\s+(?:a\s+las?\s+)?\d{1,2}:\d{2}\s*$', '', message, flags=_re.IGNORECASE
+        ).strip()
+        message = message or raw_message
         reminder = Reminder(message=message, fire_at=fire_at)
         db.add(reminder)
         db.commit()
@@ -358,6 +374,7 @@ def batch_save(batch: "BatchSaveIn", db: Session = Depends(get_db)):
             type="note",
             summary=item.idea,
             tags=tags,
+            source_url=item.source_url or None,
             status="processed",
             processed_at=datetime.now(timezone.utc),
         )

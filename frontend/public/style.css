@@ -389,6 +389,41 @@ body {
                 0 0 16px rgba(88, 166, 255, 0.12);
 }
 
+/* ── Super-bubble (large document, > 3 groups) ───────────────────────────── */
+.grid-item--super {
+    border-color: rgba(255, 80, 80, 0.55);
+    background: linear-gradient(135deg, rgba(255, 60, 60, 0.08), rgba(180, 0, 0, 0.04));
+    box-shadow: inset 0 0 24px rgba(0,0,0,0.25),
+                0 0 0 1.5px rgba(255, 80, 80, 0.35),
+                0 0 22px rgba(255, 60, 60, 0.18);
+}
+
+.grid-item--super .item-text {
+    color: #ff8888;
+}
+
+.grid-item--super:hover {
+    background: rgba(255, 60, 60, 0.12);
+    border-color: rgba(255, 80, 80, 0.85);
+    box-shadow: 0 15px 30px rgba(0,0,0,0.35),
+                inset 0 0 18px rgba(255, 60, 60, 0.15),
+                0 0 32px rgba(255, 60, 60, 0.28);
+}
+
+.grid-item--super:hover .item-text {
+    color: #ff5555;
+}
+
+.super-badge {
+    position: absolute;
+    top: 6%;
+    right: 10%;
+    font-size: 1.2rem;
+    line-height: 1;
+    pointer-events: none;
+    filter: drop-shadow(0 0 4px rgba(255,60,60,0.7));
+}
+
 /* ── Right-click context menu ───────────────────────────────── */
 .pin-context-menu {
     position: fixed;
@@ -504,6 +539,105 @@ body {
 
 .edit-modal-cancel:hover {
     background: rgba(255, 255, 255, 0.12);
+}
+
+/* ── YouTube embed card ─────────────────────────────────────────────── */
+.yt-card {
+    background: rgba(18, 20, 32, 0.92);
+    border-left: 4px solid #ff0000;
+    border-radius: 4px 12px 12px 4px;
+    padding: 12px 14px 14px;
+    max-width: 460px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex-shrink: 0;
+    transition: background 0.2s;
+    cursor: default;
+}
+
+.yt-card:hover {
+    background: rgba(28, 30, 46, 0.97);
+}
+
+.yt-card-header {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+}
+
+.yt-card-provider {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #fff;
+    opacity: 0.88;
+    letter-spacing: 0.02em;
+}
+
+.yt-card-channel {
+    font-size: 0.83rem;
+    font-weight: 500;
+    color: var(--text-color);
+    opacity: 0.65;
+    min-height: 1.1em;
+}
+
+.yt-card-title {
+    font-size: 0.97rem;
+    font-weight: 600;
+    color: #58a6ff;
+    text-decoration: none;
+    line-height: 1.4;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.yt-card-title:hover {
+    text-decoration: underline;
+}
+
+.yt-meta-loading {
+    opacity: 0.35;
+    font-style: italic;
+}
+
+.yt-card-thumb-wrap {
+    position: relative;
+    display: block;
+    width: 100%;
+    border-radius: 8px;
+    overflow: hidden;
+    margin-top: 6px;
+    aspect-ratio: 16 / 9;
+    background: #000;
+}
+
+.yt-card-thumb {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    transition: opacity 0.2s;
+}
+
+.yt-card-play {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.28);
+    transition: background 0.2s;
+}
+
+.yt-card-thumb-wrap:hover .yt-card-thumb {
+    opacity: 0.85;
+}
+
+.yt-card-thumb-wrap:hover .yt-card-play {
+    background: rgba(0, 0, 0, 0.1);
 }
 
 /* ── Reminders bar (fixed bottom) ────────────────────────────────────── */

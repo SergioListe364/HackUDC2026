@@ -406,8 +406,8 @@ def _extract_text_from_file(file_bytes: bytes, filename: str) -> str:
 def _extract_ideas_from_document(text: str, lang: str = "es") -> list[dict]:
     """Divide el texto en trozos y pide al LLM que extraiga ideas estructuradas."""
     import json as _json
-    CHUNK_SIZE = 3000
-    OVERLAP    = 300
+    CHUNK_SIZE = 8000
+    OVERLAP    = 500
     results    = []
 
     if lang == "en":
@@ -528,7 +528,11 @@ async def extract_document(file: UploadFile = File(...), lang: str = Form(defaul
 
     log.info(f"📄  Procesando documento '{file.filename}' ({len(text)} chars, lang={lang})…")
     try:
-        extractions = _extract_ideas_from_document(text, lang=lang)
+        import asyncio as _asyncio
+        loop = _asyncio.get_event_loop()
+        extractions = await loop.run_in_executor(
+            None, lambda: _extract_ideas_from_document(text, lang=lang)
+        )
     except Exception as exc:
         log.error(f"❌  Error extrayendo ideas: {exc}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(exc))

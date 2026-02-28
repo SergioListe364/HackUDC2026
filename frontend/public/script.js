@@ -112,6 +112,27 @@ const STRINGS = {
 function t(key) { return (STRINGS[currentLang] || STRINGS.es)[key] || STRINGS.es[key]; }
 const MAX_BUBBLES = 12;
 
+// ── YouTube helpers ──────────────────────────────────────────────────────────
+const YT_RE = /(?:https?:\/\/)?(?:www\.)?(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|shorts\/|embed\/))([a-zA-Z0-9_-]{11})/;
+function ytVideoId(url) {
+    if (!url) return null;
+    const m = url.match(YT_RE);
+    return m ? m[1] : null;
+}
+
+// ── Super-bubble state (persisted in localStorage) ──────────────────────────
+// Set of group names that are super-bubbles (created from large documents)
+let superBubbles = new Set(JSON.parse(localStorage.getItem('brain_superbubbles') || '[]'));
+function saveSuperBubble(name) {
+    superBubbles.add(name);
+    localStorage.setItem('brain_superbubbles', JSON.stringify([...superBubbles]));
+}
+function removeSuperBubble(name) {
+    superBubbles.delete(name);
+    localStorage.setItem('brain_superbubbles', JSON.stringify([...superBubbles]));
+}
+function isSuperBubble(name) { return superBubbles.has(name); }
+
 // ── Pin state (persisted in localStorage) ────────────────────────────────────
 // { groupName: timestamp }  — lower timestamp = pinned first
 let pinnedGroups = JSON.parse(localStorage.getItem('brain_pins') || '{}');
@@ -207,6 +228,15 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ── Reminders ─────────────────────────────────────────────────────────────
+    // Strip LLM-appended date suffixes from reminder text
+    // e.g. "gimnasio dom 1 mar 20:00" → "gimnasio"
+    function stripDateSuffix(text) {
+        return text
+            .replace(/\s+(?:lun|mar|mi[eé]|jue|vie|s[aá]b|dom)\s+\d{1,2}\s+\w{3}(?:\s+\d{1,2}:\d{2})?\s*$/i, '')
+            .replace(/\s+(?:a\s+las?\s+)?\d{1,2}:\d{2}\s*$/i, '')
+            .trim();
+    }
+
     function loadReminders() {
         fetch(`${BACKEND_URL}/reminders?sent=false`)
             .then(r => r.json())
@@ -226,7 +256,8 @@ document.addEventListener('DOMContentLoaded', () => {
         section.style.display = 'block';
         list.innerHTML = '';
         reminders.forEach(r => {
-            const msg = (currentLang === 'en' && transCache[r.message]) ? transCache[r.message] : r.message;
+            const rawMsg = (currentLang === 'en' && transCache[r.message]) ? transCache[r.message] : r.message;
+            const msg = stripDateSuffix(rawMsg);
             const fireDate = new Date(r.fire_at);
             const timeStr  = fireDate.toLocaleString(
                 currentLang === 'en' ? 'en-GB' : 'es-ES',
@@ -271,28 +302,31 @@ document.addEventListener('DOMContentLoaded', () => {
     document.addEventListener('click', closeCtxMenu);
     document.addEventListener('keydown', e => { if (e.key === 'Escape') closeCtxMenu(); });
 
-    function showPinMenu(e, groupName) {
+    function showPinMenu(e, groupName, isSuper) {
         e.preventDefault();
         closeCtxMenu();
         const menu = document.createElement('div');
         menu.className = 'pin-context-menu';
         const pinned = isPinned(groupName);
         menu.innerHTML = `
-            <button class="pin-menu-item">${pinned ? '\uD83D\uDCCC Desanclar' : '\uD83D\uDCCC Anclar'}</button>
+            ${isSuper ? '' : `<button class="pin-menu-item">${pinned ? '\uD83D\uDCCC Desanclar' : '\uD83D\uDCCC Anclar'}</button>`}
             <button class="pin-menu-item">\u270F\uFE0F Editar</button>
             <div class="pin-menu-separator"></div>
             <button class="pin-menu-item pin-menu-item--danger">\uD83D\uDDD1\uFE0F Eliminar</button>
         `;
         menu.style.left = `${e.clientX}px`;
         menu.style.top  = `${e.clientY}px`;
-        const [pinBtn, editBtn, delBtn] = menu.querySelectorAll('button');
-        pinBtn.addEventListener('click', ev => {
-            ev.stopPropagation();
-            if (pinned) removePin(groupName); else savePin(groupName);
-            closeCtxMenu();
-            loadGroups();
-        });
-        editBtn.addEventListener('click', ev => {
+        const btns   = [...menu.querySelectorAll('button')];
+        let   btnIdx = 0;
+        if (!isSuper) {
+            btns[btnIdx++].addEventListener('click', ev => {
+                ev.stopPropagation();
+                if (pinned) removePin(groupName); else savePin(groupName);
+                closeCtxMenu();
+                loadGroups();
+            });
+        }
+        btns[btnIdx++].addEventListener('click', ev => {   // edit
             ev.stopPropagation();
             closeCtxMenu();
             showEditModal(e.clientX, e.clientY, groupName, newName => {
@@ -307,23 +341,24 @@ document.addEventListener('DOMContentLoaded', () => {
                         pinnedGroups[newName] = ts;
                         localStorage.setItem('brain_pins', JSON.stringify(pinnedGroups));
                     }
+                    if (isSuper) { removeSuperBubble(groupName); saveSuperBubble(newName); }
                     loadGroups();
                 }).catch(() => {});
             });
         });
-        delBtn.addEventListener('click', ev => {
+        btns[btnIdx++].addEventListener('click', ev => {   // delete
             ev.stopPropagation();
             closeCtxMenu();
             fetch(`${BACKEND_URL}/groups/${encodeURIComponent(groupName)}`, { method: 'DELETE' })
                 .then(() => {
                     removePin(groupName);
+                    if (isSuper) removeSuperBubble(groupName);
                     loadGroups();
                 })
                 .catch(() => {});
         });
         document.body.appendChild(menu);
         _ctxMenu = menu;
-        // Keep inside viewport
         const r = menu.getBoundingClientRect();
         if (r.right  > window.innerWidth)  menu.style.left = `${e.clientX - r.width}px`;
         if (r.bottom > window.innerHeight) menu.style.top  = `${e.clientY - r.height}px`;
@@ -474,15 +509,22 @@ document.addEventListener('DOMContentLoaded', () => {
             const el  = document.createElement('div');
             el.classList.add('grid-item');
             // Always use original name as pin key so translated names don't corrupt state
-            const pinKey = group._orig || group.name;
+            const pinKey   = group._orig || group.name;
+            const isSuper  = isSuperBubble(pinKey);
             if (isPinned(pinKey)) el.classList.add('grid-item--pinned');
+            if (isSuper)          el.classList.add('grid-item--super');
 
             const txt = document.createElement('span');
             txt.classList.add('item-text');
             txt.textContent = group.name;
             el.appendChild(txt);
 
-            if (isPinned(pinKey)) {
+            if (isSuper) {
+                const badge = document.createElement('span');
+                badge.className = 'super-badge';
+                badge.textContent = '\uD83D\uDCC4';
+                el.appendChild(badge);
+            } else if (isPinned(pinKey)) {
                 const pin = document.createElement('span');
                 pin.className = 'pin-badge';
                 pin.textContent = '\uD83D\uDCCC';
@@ -496,7 +538,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const summary    = rawSummary ? (transCache[rawSummary] || rawSummary) : null;
                 pushDetail(group.name, buildItems(group), t('groupsLabel'), summary, origName);
             });
-            el.addEventListener('contextmenu', e => showPinMenu(e, group._orig || group.name));
+            el.addEventListener('contextmenu', e => showPinMenu(e, group._orig || group.name, isSuper));
             projectsGrid.appendChild(el);
         });
     }
@@ -597,6 +639,40 @@ document.addEventListener('DOMContentLoaded', () => {
                 bubble.addEventListener('contextmenu', e => showSubCtxMenu(e, item));
                 detailContent.appendChild(bubble);
             } else {
+                // ── YouTube card ──────────────────────────────────────────────
+                if (item.url && ytVideoId(item.url)) {
+                    const videoId = ytVideoId(item.url);
+                    const card = document.createElement('div');
+                    card.className = 'yt-card';
+                    card.innerHTML = `
+                        <div class="yt-card-header">
+                            <svg class="yt-card-icon" viewBox="0 0 24 24" width="16" height="16" fill="#ff0000"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.6 3.6 12 3.6 12 3.6s-7.6 0-9.4.5A3 3 0 0 0 .5 6.2C0 8 0 12 0 12s0 4 .5 5.8a3 3 0 0 0 2.1 2.1C4.4 20.4 12 20.4 12 20.4s7.6 0 9.4-.5a3 3 0 0 0 2.1-2.1C24 16 24 12 24 12s0-4-.5-5.8z"/><polygon points="9.6,15.6 15.8,12 9.6,8.4" fill="white"/></svg>
+                            <span class="yt-card-provider">YouTube</span>
+                        </div>
+                        <div class="yt-card-channel yt-meta-loading">&#8203;</div>
+                        <a class="yt-card-title yt-meta-loading" href="${item.url}" target="_blank" rel="noopener">Cargando...</a>
+                        <a class="yt-card-thumb-wrap" href="${item.url}" target="_blank" rel="noopener">
+                            <img class="yt-card-thumb" src="https://i.ytimg.com/vi/${videoId}/hqdefault.jpg" alt="thumbnail" loading="lazy" />
+                            <div class="yt-card-play"><svg viewBox="0 0 24 24" width="44" height="44" fill="white"><path d="M8 5v14l11-7z"/></svg></div>
+                        </a>
+                    `;
+                    card.addEventListener('contextmenu', e => showIdeaCtxMenu(e, item));
+                    detailContent.appendChild(card);
+                    fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`)
+                        .then(r => r.json())
+                        .then(meta => {
+                            const ch = card.querySelector('.yt-card-channel');
+                            const ti = card.querySelector('.yt-card-title');
+                            if (ch) { ch.textContent = meta.author_name || ''; ch.classList.remove('yt-meta-loading'); }
+                            if (ti) { ti.textContent = meta.title || item.url;   ti.classList.remove('yt-meta-loading'); }
+                        })
+                        .catch(() => {
+                            const ti = card.querySelector('.yt-card-title');
+                            if (ti) { ti.textContent = item.url; ti.classList.remove('yt-meta-loading'); }
+                        });
+                    return;
+                }
+
                 // ── Idea row ──────────────────────────────────────────────────
                 const row = document.createElement('div');
                 row.classList.add('idea-item');
@@ -649,6 +725,33 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function submitNote(text) {
         if (!text.trim()) return;
+
+        // ── YouTube fast-save (bypass AI) ─────────────────────────────────────
+        const ytId = ytVideoId(text.trim());
+        if (ytId) {
+            setLoading(true);
+            const cleanUrl = `https://www.youtube.com/watch?v=${ytId}`;
+            fetch(`${BACKEND_URL}/batch-save`, {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify({
+                    items:  [{ idea: cleanUrl, group: 'youtube', source_url: cleanUrl }],
+                    origin: 'frontend',
+                }),
+            }).then(() => {
+                searchInput.value = '';
+                setLoading(false);
+                searchInput.placeholder = '✓ Guardado en "youtube"';
+                setTimeout(() => { searchInput.placeholder = t('searchPlaceholder'); }, 3000);
+                loadGroups();
+            }).catch(() => {
+                setLoading(false);
+                searchInput.placeholder = t('errorServer');
+                setTimeout(() => { searchInput.placeholder = t('searchPlaceholder'); }, 3000);
+            });
+            return;
+        }
+
         setLoading(true);
 
         fetch(`${BACKEND_URL}/note`, {
@@ -830,10 +933,19 @@ document.addEventListener('DOMContentLoaded', () => {
             const formData = new FormData();
             formData.append('file', file);
             formData.append('lang', currentLang);
-            const aiResp = await fetch(`${AI_URL}/extract-document`, {
-                method: 'POST',
-                body:   formData,
-            });
+            // 30-minute timeout — large docs with many chunks can take a long time
+            const aiController = new AbortController();
+            const aiTimeout    = setTimeout(() => aiController.abort(), 30 * 60 * 1000);
+            let aiResp;
+            try {
+                aiResp = await fetch(`${AI_URL}/extract-document`, {
+                    method: 'POST',
+                    body:   formData,
+                    signal: aiController.signal,
+                });
+            } finally {
+                clearTimeout(aiTimeout);
+            }
             if (!aiResp.ok) {
                 const detail = await aiResp.json().catch(() => ({}));
                 throw new Error(detail.detail || `AI error ${aiResp.status}`);
@@ -846,11 +958,26 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
-            // 2. Save pre-classified ideas directly to backend
+            // 2. If doc produces > 3 groups → wrap all into a super-bubble
+            const distinctGroups = [...new Set(extractions.map(e => e.group).filter(Boolean))];
+            let itemsToSave = extractions;
+            if (distinctGroups.length > 2) {
+                const baseName  = file.name.replace(/\.[^.]+$/, '');
+                const superName = `\uD83D\uDCC4 ${baseName}`;
+                saveSuperBubble(superName);
+                itemsToSave = extractions.map(item => ({
+                    idea:       item.subgroup ? `[${item.subgroup}] ${item.idea}` : item.idea,
+                    group:      superName,
+                    subgroup:   item.group,
+                    source_url: item.source_url || undefined,
+                }));
+            }
+
+            // 3. Save pre-classified ideas directly to backend
             const saveResp = await fetch(`${BACKEND_URL}/batch-save`, {
                 method:  'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body:    JSON.stringify({ items: extractions, origin: 'document' }),
+                body:    JSON.stringify({ items: itemsToSave, origin: 'document' }),
             });
             if (!saveResp.ok) throw new Error(`Backend error ${saveResp.status}`);
             const { saved } = await saveResp.json();
