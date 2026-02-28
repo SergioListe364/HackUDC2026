@@ -11,6 +11,9 @@ services:
       - "8001:8001"
     environment:
       - OLLAMA_HOST=http://host.docker.internal:11434
+      - KNOWLEDGE_FILE=/app/data/knowledge.json
+    volumes:
+      - ./data:/app/data
     extra_hosts:
       - "host.docker.internal:host-gateway"
 

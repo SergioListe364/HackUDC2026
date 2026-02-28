@@ -120,6 +120,19 @@ function ytVideoId(url) {
     return m ? m[1] : null;
 }
 
+// ── Super-bubble state (persisted in localStorage) ──────────────────────────
+// Set of group names that are super-bubbles (created from large documents)
+let superBubbles = new Set(JSON.parse(localStorage.getItem('brain_superbubbles') || '[]'));
+function saveSuperBubble(name) {
+    superBubbles.add(name);
+    localStorage.setItem('brain_superbubbles', JSON.stringify([...superBubbles]));
+}
+function removeSuperBubble(name) {
+    superBubbles.delete(name);
+    localStorage.setItem('brain_superbubbles', JSON.stringify([...superBubbles]));
+}
+function isSuperBubble(name) { return superBubbles.has(name); }
+
 // ── Pin state (persisted in localStorage) ────────────────────────────────────
 // { groupName: timestamp }  — lower timestamp = pinned first
 let pinnedGroups = JSON.parse(localStorage.getItem('brain_pins') || '{}');
@@ -215,6 +228,15 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ── Reminders ─────────────────────────────────────────────────────────────
+    // Strip LLM-appended date suffixes from reminder text
+    // e.g. "gimnasio dom 1 mar 20:00" → "gimnasio"
+    function stripDateSuffix(text) {
+        return text
+            .replace(/\s+(?:lun|mar|mi[eé]|jue|vie|s[aá]b|dom)\s+\d{1,2}\s+\w{3}(?:\s+\d{1,2}:\d{2})?\s*$/i, '')
+            .replace(/\s+(?:a\s+las?\s+)?\d{1,2}:\d{2}\s*$/i, '')
+            .trim();
+    }
+
     function loadReminders() {
         fetch(`${BACKEND_URL}/reminders?sent=false`)
             .then(r => r.json())
@@ -234,7 +256,8 @@ document.addEventListener('DOMContentLoaded', () => {
         section.style.display = 'block';
         list.innerHTML = '';
         reminders.forEach(r => {
-            const msg = (currentLang === 'en' && transCache[r.message]) ? transCache[r.message] : r.message;
+            const rawMsg = (currentLang === 'en' && transCache[r.message]) ? transCache[r.message] : r.message;
+            const msg = stripDateSuffix(rawMsg);
             const fireDate = new Date(r.fire_at);
             const timeStr  = fireDate.toLocaleString(
                 currentLang === 'en' ? 'en-GB' : 'es-ES',
@@ -279,28 +302,31 @@ document.addEventListener('DOMContentLoaded', () => {
     document.addEventListener('click', closeCtxMenu);
     document.addEventListener('keydown', e => { if (e.key === 'Escape') closeCtxMenu(); });
 
-    function showPinMenu(e, groupName) {
+    function showPinMenu(e, groupName, isSuper) {
         e.preventDefault();
         closeCtxMenu();
         const menu = document.createElement('div');
         menu.className = 'pin-context-menu';
         const pinned = isPinned(groupName);
         menu.innerHTML = `
-            <button class="pin-menu-item">${pinned ? '\uD83D\uDCCC Desanclar' : '\uD83D\uDCCC Anclar'}</button>
+            ${isSuper ? '' : `<button class="pin-menu-item">${pinned ? '\uD83D\uDCCC Desanclar' : '\uD83D\uDCCC Anclar'}</button>`}
             <button class="pin-menu-item">\u270F\uFE0F Editar</button>
             <div class="pin-menu-separator"></div>
             <button class="pin-menu-item pin-menu-item--danger">\uD83D\uDDD1\uFE0F Eliminar</button>
         `;
         menu.style.left = `${e.clientX}px`;
         menu.style.top  = `${e.clientY}px`;
-        const [pinBtn, editBtn, delBtn] = menu.querySelectorAll('button');
-        pinBtn.addEventListener('click', ev => {
-            ev.stopPropagation();
-            if (pinned) removePin(groupName); else savePin(groupName);
-            closeCtxMenu();
-            loadGroups();
-        });
-        editBtn.addEventListener('click', ev => {
+        const btns   = [...menu.querySelectorAll('button')];
+        let   btnIdx = 0;
+        if (!isSuper) {
+            btns[btnIdx++].addEventListener('click', ev => {
+                ev.stopPropagation();
+                if (pinned) removePin(groupName); else savePin(groupName);
+                closeCtxMenu();
+                loadGroups();
+            });
+        }
+        btns[btnIdx++].addEventListener('click', ev => {   // edit
             ev.stopPropagation();
             closeCtxMenu();
             showEditModal(e.clientX, e.clientY, groupName, newName => {
@@ -315,23 +341,24 @@ document.addEventListener('DOMContentLoaded', () => {
                         pinnedGroups[newName] = ts;
                         localStorage.setItem('brain_pins', JSON.stringify(pinnedGroups));
                     }
+                    if (isSuper) { removeSuperBubble(groupName); saveSuperBubble(newName); }
                     loadGroups();
                 }).catch(() => {});
             });
         });
-        delBtn.addEventListener('click', ev => {
+        btns[btnIdx++].addEventListener('click', ev => {   // delete
             ev.stopPropagation();
             closeCtxMenu();
             fetch(`${BACKEND_URL}/groups/${encodeURIComponent(groupName)}`, { method: 'DELETE' })
                 .then(() => {
                     removePin(groupName);
+                    if (isSuper) removeSuperBubble(groupName);
                     loadGroups();
                 })
                 .catch(() => {});
         });
         document.body.appendChild(menu);
         _ctxMenu = menu;
-        // Keep inside viewport
         const r = menu.getBoundingClientRect();
         if (r.right  > window.innerWidth)  menu.style.left = `${e.clientX - r.width}px`;
         if (r.bottom > window.innerHeight) menu.style.top  = `${e.clientY - r.height}px`;
@@ -482,15 +509,22 @@ document.addEventListener('DOMContentLoaded', () => {
             const el  = document.createElement('div');
             el.classList.add('grid-item');
             // Always use original name as pin key so translated names don't corrupt state
-            const pinKey = group._orig || group.name;
+            const pinKey   = group._orig || group.name;
+            const isSuper  = isSuperBubble(pinKey);
             if (isPinned(pinKey)) el.classList.add('grid-item--pinned');
+            if (isSuper)          el.classList.add('grid-item--super');
 
             const txt = document.createElement('span');
             txt.classList.add('item-text');
             txt.textContent = group.name;
             el.appendChild(txt);
 
-            if (isPinned(pinKey)) {
+            if (isSuper) {
+                const badge = document.createElement('span');
+                badge.className = 'super-badge';
+                badge.textContent = '\uD83D\uDCC4';
+                el.appendChild(badge);
+            } else if (isPinned(pinKey)) {
                 const pin = document.createElement('span');
                 pin.className = 'pin-badge';
                 pin.textContent = '\uD83D\uDCCC';
@@ -504,7 +538,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const summary    = rawSummary ? (transCache[rawSummary] || rawSummary) : null;
                 pushDetail(group.name, buildItems(group), t('groupsLabel'), summary, origName);
             });
-            el.addEventListener('contextmenu', e => showPinMenu(e, group._orig || group.name));
+            el.addEventListener('contextmenu', e => showPinMenu(e, group._orig || group.name, isSuper));
             projectsGrid.appendChild(el);
         });
     }
@@ -899,10 +933,19 @@ document.addEventListener('DOMContentLoaded', () => {
             const formData = new FormData();
             formData.append('file', file);
             formData.append('lang', currentLang);
-            const aiResp = await fetch(`${AI_URL}/extract-document`, {
-                method: 'POST',
-                body:   formData,
-            });
+            // 30-minute timeout — large docs with many chunks can take a long time
+            const aiController = new AbortController();
+            const aiTimeout    = setTimeout(() => aiController.abort(), 30 * 60 * 1000);
+            let aiResp;
+            try {
+                aiResp = await fetch(`${AI_URL}/extract-document`, {
+                    method: 'POST',
+                    body:   formData,
+                    signal: aiController.signal,
+                });
+            } finally {
+                clearTimeout(aiTimeout);
+            }
             if (!aiResp.ok) {
                 const detail = await aiResp.json().catch(() => ({}));
                 throw new Error(detail.detail || `AI error ${aiResp.status}`);
@@ -915,11 +958,26 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
-            // 2. Save pre-classified ideas directly to backend
+            // 2. If doc produces > 3 groups → wrap all into a super-bubble
+            const distinctGroups = [...new Set(extractions.map(e => e.group).filter(Boolean))];
+            let itemsToSave = extractions;
+            if (distinctGroups.length > 2) {
+                const baseName  = file.name.replace(/\.[^.]+$/, '');
+                const superName = `\uD83D\uDCC4 ${baseName}`;
+                saveSuperBubble(superName);
+                itemsToSave = extractions.map(item => ({
+                    idea:       item.subgroup ? `[${item.subgroup}] ${item.idea}` : item.idea,
+                    group:      superName,
+                    subgroup:   item.group,
+                    source_url: item.source_url || undefined,
+                }));
+            }
+
+            // 3. Save pre-classified ideas directly to backend
             const saveResp = await fetch(`${BACKEND_URL}/batch-save`, {
                 method:  'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body:    JSON.stringify({ items: extractions, origin: 'document' }),
+                body:    JSON.stringify({ items: itemsToSave, origin: 'document' }),
             });
             if (!saveResp.ok) throw new Error(`Backend error ${saveResp.status}`);
             const { saved } = await saveResp.json();

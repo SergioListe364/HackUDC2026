@@ -13,7 +13,10 @@ OLLAMA_BASE_URL = os.getenv("OLLAMA_HOST", os.getenv("OLLAMA_BASE_URL", "http://
 # Cambia el modelo con: $env:OLLAMA_MODEL = "nombre_modelo"
 # Opciones: llama3.2 (rápido, 2 GB), llama3.1:8b (preciso, 5 GB)
 MODEL_NAME = os.getenv("OLLAMA_MODEL", "llama3.1:8b")
-TIMEOUT_SECONDS = 240
+TIMEOUT_SECONDS = 3600  # 1 hour max per LLM call
+
+# Explicit httpx timeout: very short connect, unlimited read (LLM can be slow)
+_HTTPX_TIMEOUT = httpx.Timeout(connect=30.0, read=3600.0, write=120.0, pool=30.0)
 
 
 def _call_ollama(prompt: str, system: str = "", temperature: float = 0.1) -> str:
@@ -28,11 +31,12 @@ def _call_ollama(prompt: str, system: str = "", temperature: float = 0.1) -> str
         "stream": False,
         "options": {
             "temperature": temperature,
-            "num_predict": 512,  # JSON outputs son cortos; 512 tokens es más que suficiente
+            "num_predict": -1,   # unlimited — never truncate JSON output
+            "num_ctx":     8192, # context window
         },
     }
 
-    with httpx.Client(timeout=TIMEOUT_SECONDS) as client:
+    with httpx.Client(timeout=_HTTPX_TIMEOUT) as client:
         response = client.post(f"{OLLAMA_BASE_URL}/api/generate", json=payload)
         response.raise_for_status()
         data = response.json()

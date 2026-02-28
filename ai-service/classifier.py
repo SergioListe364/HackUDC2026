@@ -166,6 +166,24 @@ Si es texto aleatorio (asdfgh), saludo (hola qué tal) o sin idea real → {"mak
   "vida social"    → planes con amigos/familia, eventos, fiestas.
   "citas"          → citas médicas o profesionales.  SUBGRUPO = especialista (dentista, médico…)
 
+━━ PASO 2b — Fechas relativas → absolutas en el texto de la idea ━━
+Siempre que la nota mencione una fecha u hora RELATIVA, resuélvela en la idea usando la
+fecha/hora actual que aparece en el campo "Ahora:" del mensaje del usuario.
+  • Formato de fecha legible: "<día> <dd> <mes abreviado>"  →  "lun 2 mar", "vie 6 mar"
+  • Si se menciona hora: añádela  →  "mar 3 mar 17:00", "jue 12 abr 09:30"
+  • "mañana"          → día siguiente al de hoy
+  • "pasado mañana"   → dos días después de hoy
+  • "el <weekday>"    → próxima vez que caiga ese día (si hoy ES ese día, la semana que viene)
+  • "la semana que viene" → el lunes de la semana siguiente
+  • "en X semanas"    → calcular la fecha exacta
+  • Solo hora, sin fecha explícita: si esa hora YA PASÓ hoy → USA MAÑANA (no hoy).
+    Ejemplo: son las 20:30 y dicen «gym a las 20:00» → gym mañana a las 20:00.
+  Aplica a TODAS las categorías: citas, trabajo/clase, vida social, rutina diaria…
+  ❌ idea="cita dentista el martes"      ✅ idea="dentista mar 3 mar 17:00"
+  ❌ idea="reunión mañana a las 10"      ✅ idea="reunión sáb 1 mar 10:00"
+  ❌ idea="entrega trabajo la semana que viene" ✅ idea="entrega lun 9 mar"
+  ❌ idea="gym a las 20:00" (cuando son las 20:30) ✅ idea="gym <fecha mañana> 20:00"
+
 ━━ PASO 3 — Extrae el MÍNIMO esquemático ━━
   • La idea = sustantivo/concepto esencial, 1-4 palabras, SIN el verbo del usuario.
   • El verbo está implícito en el nombre del grupo.
@@ -486,11 +504,69 @@ _MCP_TOOLS: list[dict] = [
 ]
 
 
+_MESES_ES = ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic']
+_DIAS_ES  = ['lun','mar','mié','jue','vie','sáb','dom']
+
+def _fmt_date(dt) -> str:
+    """Formatea un datetime como 'lun 2 mar'"""
+    return f"{_DIAS_ES[dt.weekday()]} {dt.day} {_MESES_ES[dt.month-1]}"
+
+def _fmt_datetime(dt) -> str:
+    """Formatea un datetime como 'lun 2 mar 17:00'"""
+    return f"{_fmt_date(dt)} {dt.hour:02d}:{dt.minute:02d}"
+
+def _next_weekday(now, target_wd: int):
+    """Devuelve el próximo datetime con weekday=target_wd (0=lun…6=dom), nunca hoy."""
+    days = (target_wd - now.weekday()) % 7
+    if days == 0:
+        days = 7
+    return now + timedelta(days=days)
+
+
 def _build_classification_prompt(note_text: str, existing_groups: list[dict]) -> str:
     """Construye el prompt con few-shot examples para clasificar una nota."""
+    now = datetime.now()
+    # Dynamic examples with real computed dates
+    next_tue = _next_weekday(now, 1)  # próximo martes
+    next_tue_17 = next_tue.replace(hour=17, minute=0, second=0, microsecond=0)
+    tomorrow = now + timedelta(days=1)
+    tomorrow_10 = tomorrow.replace(hour=10, minute=0, second=0, microsecond=0)
+    # "hora ya pasada hoy" example: pick a time 2 hours before now → show it goes to tomorrow
+    past_hour = now.replace(minute=0, second=0, microsecond=0) - timedelta(hours=2)
+    past_hour_tomorrow = past_hour + timedelta(days=1)
+    dynamic_examples = [
+        {
+            "note": "tengo cita con el dentista el martes a las 5",
+            "existing": [],
+            "result": {"action": "add", "makes_sense": True, "reason": None,
+                       "group": "citas", "subgroup": "dentista",
+                       "idea": f"dentista {_fmt_datetime(next_tue_17)}",
+                       "is_new_group": True, "is_new_subgroup": True,
+                       "inherit_parent_ideas": False, "rename_group": None}
+        },
+        {
+            "note": "reunión de trabajo mañana a las 10",
+            "existing": [],
+            "result": {"action": "add", "makes_sense": True, "reason": None,
+                       "group": "trabajo/clase", "subgroup": None,
+                       "idea": f"reunión {_fmt_datetime(tomorrow_10)}",
+                       "is_new_group": True, "is_new_subgroup": False,
+                       "inherit_parent_ideas": False, "rename_group": None}
+        },
+        {
+            # Hora ya pasada hoy: muestra que debe ir a mañana
+            "note": f"ir al gym a las {past_hour.hour:02d}:00",
+            "existing": [],
+            "result": {"action": "add", "makes_sense": True, "reason": None,
+                       "group": "rutina diaria", "subgroup": "deporte",
+                       "idea": f"gym {_fmt_datetime(past_hour_tomorrow)}",
+                       "is_new_group": True, "is_new_subgroup": True,
+                       "inherit_parent_ideas": False, "rename_group": None}
+        },
+    ]
 
     examples_str = ""
-    for ex in FEW_SHOT_EXAMPLES:
+    for ex in dynamic_examples + FEW_SHOT_EXAMPLES:
         examples_str += f"""
 EJEMPLO:
 Nota: "{ex['note']}"
@@ -907,8 +983,18 @@ def classify_note(note_text: str, existing_groups: list[dict], lang: str = "es")
         return results
 
     existing_str = json.dumps(existing_groups, ensure_ascii=False) if existing_groups else "[]"
-    now_str  = datetime.now().strftime("%A %Y-%m-%d %H:%M")
-    user_msg = f'Ahora: {now_str}\nNota: "{note_for_llm}"\nGrupos existentes: {existing_str}'
+    _now     = datetime.now()
+    _dias    = ['lunes','martes','miércoles','jueves','viernes','sábado','domingo']
+    _meses   = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre']
+    now_str  = f"{_dias[_now.weekday()]} {_now.day} de {_meses[_now.month-1]} de {_now.year}, {_now.strftime('%H:%M')}"
+    user_msg = (
+        f'Ahora: {now_str}\n'
+        f'IMPORTANTE: si la nota menciona días/horas relativos (mañana, el martes, la semana que viene…) '
+        f'DEBES calcular la fecha real con la hora actual indicada arriba y escribirla en el campo "idea" '
+        f'con el formato "<día abrev> <dd> <mes abrev> [HH:MM]". Ejemplo: "dentista mar 3 mar 17:00".\n'
+        f'REGLA CRÍTICA: si solo se da una hora sin fecha y esa hora YA PASÓ HOY → la fecha es MAÑANA, no hoy.\n'
+        f'Nota: "{note_for_llm}"\nGrupos existentes: {existing_str}'
+    )
     if lang and lang.lower() == "en":
         user_msg += "\n[IMPORTANT: Output ALL group names, subgroup names, and idea text in ENGLISH only.]"
 

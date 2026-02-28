@@ -88,7 +88,7 @@ def classify_with_ai(content: str, db: Session, lang: str = "es") -> list[dict] 
     }
 
     try:
-        with httpx.Client(timeout=30) as client:
+        with httpx.Client(timeout=90) as client:
             resp = client.post(f"{AI_SERVICE_URL}/classify", json=payload)
             resp.raise_for_status()
             data = resp.json()
