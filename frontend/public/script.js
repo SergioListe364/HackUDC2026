@@ -112,6 +112,14 @@ const STRINGS = {
 function t(key) { return (STRINGS[currentLang] || STRINGS.es)[key] || STRINGS.es[key]; }
 const MAX_BUBBLES = 12;
 
+// ── YouTube helpers ──────────────────────────────────────────────────────────
+const YT_RE = /(?:https?:\/\/)?(?:www\.)?(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|shorts\/|embed\/))([a-zA-Z0-9_-]{11})/;
+function ytVideoId(url) {
+    if (!url) return null;
+    const m = url.match(YT_RE);
+    return m ? m[1] : null;
+}
+
 // ── Pin state (persisted in localStorage) ────────────────────────────────────
 // { groupName: timestamp }  — lower timestamp = pinned first
 let pinnedGroups = JSON.parse(localStorage.getItem('brain_pins') || '{}');
@@ -597,6 +605,40 @@ document.addEventListener('DOMContentLoaded', () => {
                 bubble.addEventListener('contextmenu', e => showSubCtxMenu(e, item));
                 detailContent.appendChild(bubble);
             } else {
+                // ── YouTube card ──────────────────────────────────────────────
+                if (item.url && ytVideoId(item.url)) {
+                    const videoId = ytVideoId(item.url);
+                    const card = document.createElement('div');
+                    card.className = 'yt-card';
+                    card.innerHTML = `
+                        <div class="yt-card-header">
+                            <svg class="yt-card-icon" viewBox="0 0 24 24" width="16" height="16" fill="#ff0000"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.6 3.6 12 3.6 12 3.6s-7.6 0-9.4.5A3 3 0 0 0 .5 6.2C0 8 0 12 0 12s0 4 .5 5.8a3 3 0 0 0 2.1 2.1C4.4 20.4 12 20.4 12 20.4s7.6 0 9.4-.5a3 3 0 0 0 2.1-2.1C24 16 24 12 24 12s0-4-.5-5.8z"/><polygon points="9.6,15.6 15.8,12 9.6,8.4" fill="white"/></svg>
+                            <span class="yt-card-provider">YouTube</span>
+                        </div>
+                        <div class="yt-card-channel yt-meta-loading">&#8203;</div>
+                        <a class="yt-card-title yt-meta-loading" href="${item.url}" target="_blank" rel="noopener">Cargando...</a>
+                        <a class="yt-card-thumb-wrap" href="${item.url}" target="_blank" rel="noopener">
+                            <img class="yt-card-thumb" src="https://i.ytimg.com/vi/${videoId}/hqdefault.jpg" alt="thumbnail" loading="lazy" />
+                            <div class="yt-card-play"><svg viewBox="0 0 24 24" width="44" height="44" fill="white"><path d="M8 5v14l11-7z"/></svg></div>
+                        </a>
+                    `;
+                    card.addEventListener('contextmenu', e => showIdeaCtxMenu(e, item));
+                    detailContent.appendChild(card);
+                    fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`)
+                        .then(r => r.json())
+                        .then(meta => {
+                            const ch = card.querySelector('.yt-card-channel');
+                            const ti = card.querySelector('.yt-card-title');
+                            if (ch) { ch.textContent = meta.author_name || ''; ch.classList.remove('yt-meta-loading'); }
+                            if (ti) { ti.textContent = meta.title || item.url;   ti.classList.remove('yt-meta-loading'); }
+                        })
+                        .catch(() => {
+                            const ti = card.querySelector('.yt-card-title');
+                            if (ti) { ti.textContent = item.url; ti.classList.remove('yt-meta-loading'); }
+                        });
+                    return;
+                }
+
                 // ── Idea row ──────────────────────────────────────────────────
                 const row = document.createElement('div');
                 row.classList.add('idea-item');
@@ -649,6 +691,33 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function submitNote(text) {
         if (!text.trim()) return;
+
+        // ── YouTube fast-save (bypass AI) ─────────────────────────────────────
+        const ytId = ytVideoId(text.trim());
+        if (ytId) {
+            setLoading(true);
+            const cleanUrl = `https://www.youtube.com/watch?v=${ytId}`;
+            fetch(`${BACKEND_URL}/batch-save`, {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify({
+                    items:  [{ idea: cleanUrl, group: 'youtube', source_url: cleanUrl }],
+                    origin: 'frontend',
+                }),
+            }).then(() => {
+                searchInput.value = '';
+                setLoading(false);
+                searchInput.placeholder = '✓ Guardado en "youtube"';
+                setTimeout(() => { searchInput.placeholder = t('searchPlaceholder'); }, 3000);
+                loadGroups();
+            }).catch(() => {
+                setLoading(false);
+                searchInput.placeholder = t('errorServer');
+                setTimeout(() => { searchInput.placeholder = t('searchPlaceholder'); }, 3000);
+            });
+            return;
+        }
+
         setLoading(true);
 
         fetch(`${BACKEND_URL}/note`, {

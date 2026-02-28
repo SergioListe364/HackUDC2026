@@ -226,9 +226,10 @@ class NoteOut(BaseModel):
 
 
 class BatchSaveItem(BaseModel):
-    idea:     str
-    group:    str
-    subgroup: Optional[str] = None
+    idea:       str
+    group:      str
+    subgroup:   Optional[str] = None
+    source_url: Optional[str] = None
 
 class BatchSaveIn(BaseModel):
     items:  list[BatchSaveItem]
@@ -358,6 +359,7 @@ def batch_save(batch: "BatchSaveIn", db: Session = Depends(get_db)):
             type="note",
             summary=item.idea,
             tags=tags,
+            source_url=item.source_url or None,
             status="processed",
             processed_at=datetime.now(timezone.utc),
         )
