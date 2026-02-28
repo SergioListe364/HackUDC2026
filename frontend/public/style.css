@@ -1,0 +1,778 @@
+/* Premium Glassmorphism & Dark Mode Style */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap');
+
+:root {
+    --bg-color: #0d1117;
+    --glass-bg: rgba(255, 255, 255, 0.05);
+    /* very subtle white */
+    --glass-border: rgba(255, 255, 255, 0.1);
+    --text-color: #f0f6fc;
+    --accent-color: #58a6ff;
+    /* light blue */
+    --hover-bg: rgba(88, 166, 255, 0.15);
+    /* accent blur */
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: 'Inter', sans-serif;
+}
+
+body {
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    overflow: hidden;
+    background: radial-gradient(circle at top left, #161b22, #0d1117);
+}
+
+.app-container {
+    width: 90vw;
+    height: 90vh;
+    max-width: 1400px;
+    background: var(--glass-bg);
+    border-radius: 24px;
+    border: 1px solid var(--glass-border);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    display: flex;
+    overflow: hidden;
+    position: relative;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+}
+
+
+
+/* Main Content Area */
+.content-area {
+    flex-grow: 1;
+    height: 100%;
+    position: relative;
+    transition: margin-right 0.3s ease;
+}
+
+/* Views */
+.view {
+    position: absolute;
+    top: 126px;       /* 70px logo + 56px chrome-bar */
+    left: 0;
+    width: 100%;
+    height: calc(100% - 126px);
+    padding: 8px 48px 48px;
+    transition: opacity 0.6s cubic-bezier(0.16, 1, 0.3, 1), transform 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+    display: flex;
+    flex-direction: column;
+}
+
+/* Persistent chrome: logo + bar (always on top of both views) */
+.app-chrome {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    pointer-events: none;
+}
+
+.chrome-logo {
+    height: 70px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 10px 0;
+    position: relative;
+}
+
+.lang-toggle {
+    position: absolute;
+    right: 48px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 20px;
+    color: var(--text-secondary, rgba(255,255,255,0.5));
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    padding: 4px 11px;
+    cursor: pointer;
+    pointer-events: all;
+    transition: color 0.2s, border-color 0.2s, background 0.2s;
+    z-index: 12;
+    line-height: 1;
+}
+
+.lang-toggle:hover {
+    color: var(--text-primary, #fff);
+    border-color: rgba(88,166,255,0.5);
+    background: rgba(88,166,255,0.08);
+}
+
+.lang-toggle.active-en {
+    color: rgba(88,166,255,0.9);
+    border-color: rgba(88,166,255,0.5);
+}
+
+.top-logo {
+    height: 100%;
+    object-fit: contain;
+    filter: drop-shadow(0 0 15px rgba(88, 166, 255, 0.2));
+}
+
+.chrome-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 52px;
+    margin: 0 48px 4px;
+    padding: 0 12px 0 20px;
+    pointer-events: all;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 14px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    transition: box-shadow 0.3s ease, border-color 0.3s ease;
+}
+
+.chrome-bar:focus-within {
+    box-shadow: 0 4px 20px rgba(88,166,255,0.15);
+    border-color: rgba(88,166,255,0.4);
+}
+
+.hidden-view {
+    opacity: 0;
+    transform: translateX(-30px);
+    pointer-events: none;
+}
+
+.active-view {
+    opacity: 1;
+    transform: translateX(0);
+    pointer-events: all;
+    transition-delay: 0.2s;
+}
+
+/* Projects view: unified scroll so reminders appear below the grid */
+#projects-view {
+    overflow-y: auto;
+    padding-bottom: 90px;
+}
+
+#detail-view {
+    padding-bottom: 90px;
+}
+
+#projects-view .grid-container {
+    height: auto;
+    min-height: 180px;
+    overflow-y: unset;
+    flex-shrink: 0;
+}
+
+.main-logo {
+    max-width: 65%;
+    max-height: 65%;
+    object-fit: contain;
+    filter: drop-shadow(0 0 25px rgba(88, 166, 255, 0.3));
+    z-index: 2;
+    transition: transform 0.3s ease;
+}
+
+.main-logo:hover {
+    transform: scale(1.05);
+}
+
+@keyframes floating {
+    0% {
+        transform: translateY(0px);
+    }
+
+    50% {
+        transform: translateY(-20px);
+    }
+
+    100% {
+        transform: translateY(0px);
+    }
+}
+
+@keyframes rotate {
+    0% {
+        transform: rotate(0deg);
+    }
+
+    100% {
+        transform: rotate(360deg);
+    }
+}
+
+/* Projects View */
+
+.search-input {
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    background: transparent;
+    border: none;
+    color: var(--text-color);
+    font-size: 1.0rem;
+    font-weight: 300;
+}
+
+.search-input:focus {
+    outline: none;
+}
+
+.search-input::placeholder {
+    color: rgba(240, 246, 252, 0.4);
+}
+
+.send-button {
+    background: var(--accent-color, #58a6ff);
+    border: none;
+    color: #0d1117;
+    cursor: pointer;
+    padding: 7px 9px;
+    border-radius: 50%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+    opacity: 0.9;
+}
+
+/* Spinner icon swap */
+.send-button .icon-send    { display: flex; align-items: center; justify-content: center; }
+.send-button .icon-spinner { display: none;  align-items: center; justify-content: center; }
+
+.send-button.is-loading .icon-send    { display: none; }
+.send-button.is-loading .icon-spinner { display: flex; }
+.send-button.is-loading               { cursor: not-allowed; opacity: 0.5; }
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+}
+.icon-spinner svg { animation: spin 0.75s linear infinite; }
+
+.send-button:hover {
+    opacity: 1;
+    transform: scale(1.08);
+    box-shadow: 0 0 10px rgba(88,166,255,0.5);
+}
+
+.send-button:active {
+    transform: scale(0.95);
+}
+
+.mic-button {
+    background: transparent;
+    border: none;
+    color: var(--text-color);
+    cursor: pointer;
+    padding: 8px;
+    border-radius: 50%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    transition: all 0.3s ease;
+    opacity: 0.7;
+}
+
+.mic-button:hover {
+    background: var(--hover-bg);
+    color: var(--accent-color);
+    opacity: 1;
+}
+
+.mic-button.is-recording {
+    color: #f85149;
+    opacity: 1;
+    animation: mic-pulse 1s ease-in-out infinite;
+}
+
+.mic-button.is-transcribing {
+    color: var(--accent-color);
+    opacity: 0.5;
+    cursor: not-allowed;
+    animation: mic-pulse 0.5s ease-in-out infinite;
+}
+
+@keyframes mic-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(248, 81, 73, 0); transform: scale(1); }
+    50%       { box-shadow: 0 0 0 6px rgba(248, 81, 73, 0.25); transform: scale(1.1); }
+}
+
+/* Document upload button — same style as mic-button */
+.doc-button {
+    background: transparent;
+    border: none;
+    color: var(--text-color);
+    cursor: pointer;
+    padding: 8px;
+    border-radius: 50%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    transition: all 0.3s ease;
+    opacity: 0.7;
+}
+.doc-button:hover {
+    background: var(--hover-bg);
+    color: var(--accent-color);
+    opacity: 1;
+}
+.doc-button.is-processing {
+    color: var(--accent-color);
+    opacity: 0.5;
+    cursor: not-allowed;
+    animation: doc-spin 1s linear infinite;
+}
+@keyframes doc-spin {
+    0%   { transform: rotate(0deg);   }
+    100% { transform: rotate(360deg); }
+}
+
+.grid-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    grid-gap: 40px;
+    height: 100%;
+    overflow-y: auto;
+    padding: 20px;
+    margin: -20px;
+}
+
+/* Custom Scrollbar */
+.grid-container::-webkit-scrollbar {
+    width: 8px;
+}
+
+.grid-container::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.grid-container::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 20px;
+}
+
+.grid-container::-webkit-scrollbar-thumb:hover {
+    background: rgba(88, 166, 255, 0.3);
+}
+
+/* ── Pin badge & pinned bubble ─────────────────────────────────── */
+.pin-badge {
+    position: absolute;
+    top: 6%;
+    right: 10%;
+    font-size: 1.35rem;
+    line-height: 1;
+    pointer-events: none;
+    filter: drop-shadow(0 0 4px rgba(0,0,0,0.7));
+    transform: rotate(20deg);
+}
+
+.grid-item--pinned {
+    border-color: rgba(88, 166, 255, 0.45);
+    box-shadow: inset 0 0 20px rgba(0,0,0,0.2),
+                0 0 0 1.5px rgba(88, 166, 255, 0.3),
+                0 0 16px rgba(88, 166, 255, 0.12);
+}
+
+/* ── Right-click context menu ───────────────────────────────── */
+.pin-context-menu {
+    position: fixed;
+    z-index: 999;
+    background: rgba(20, 22, 35, 0.97);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(88, 166, 255, 0.25);
+    border-radius: 10px;
+    padding: 4px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+    min-width: 140px;
+    animation: ctx-in 0.12s ease;
+}
+
+@keyframes ctx-in {
+    from { opacity: 0; transform: scale(0.92) translateY(-4px); }
+    to   { opacity: 1; transform: scale(1)   translateY(0); }
+}
+
+.pin-menu-item {
+    display: block;
+    width: 100%;
+    padding: 9px 14px;
+    background: none;
+    border: none;
+    border-radius: 7px;
+    color: var(--text-primary);
+    font-size: 0.88rem;
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.pin-menu-item:hover {
+    background: rgba(88, 166, 255, 0.12);
+}
+
+/* ── Reminders bar (fixed bottom) ────────────────────────────────────── */
+.reminders-section {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+    background: rgba(15, 17, 26, 0.92);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-top: 1px solid var(--glass-border);
+    padding: 10px 48px 14px;
+    box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.4);
+}
+
+.reminders-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: rgba(88, 166, 255, 0.7);
+}
+
+.reminders-icon {
+    font-size: 0.95rem;
+}
+
+.reminders-list {
+    display: flex;
+    flex-direction: row;
+    gap: 10px;
+    overflow-x: auto;
+    padding-bottom: 2px;
+}
+
+.reminders-list::-webkit-scrollbar { height: 4px; }
+.reminders-list::-webkit-scrollbar-track { background: transparent; }
+.reminders-list::-webkit-scrollbar-thumb { background: rgba(88,166,255,0.2); border-radius: 4px; }
+
+.reminder-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 14px;
+    border-radius: 20px;
+    background: rgba(88, 166, 255, 0.07);
+    border: 1px solid rgba(88, 166, 255, 0.2);
+    font-size: 0.84rem;
+    white-space: nowrap;
+    color: var(--text-primary);
+    flex-shrink: 0;
+    transition: background 0.2s, border-color 0.2s;
+    position: relative;
+    overflow: hidden;
+}
+
+.reminder-item:hover {
+    background: rgba(88, 166, 255, 0.13);
+    border-color: rgba(88, 166, 255, 0.4);
+}
+
+.reminder-delete {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding-right: 12px;
+    background: linear-gradient(90deg, transparent 30%, rgba(248, 81, 73, 0.85) 100%);
+    opacity: 0;
+    cursor: pointer;
+    border: none;
+    border-radius: 20px;
+    transition: opacity 0.2s;
+    color: #fff;
+    font-size: 0.8rem;
+    font-weight: 600;
+    gap: 5px;
+    letter-spacing: 0.02em;
+}
+
+.reminder-item:hover .reminder-delete {
+    opacity: 1;
+}
+
+.reminder-delete svg {
+    flex-shrink: 0;
+}
+
+.reminder-time {
+    font-size: 0.78rem;
+    font-variant-numeric: tabular-nums;
+    color: rgba(88, 166, 255, 0.9);
+    font-weight: 600;
+}
+
+.reminder-msg {
+    color: rgba(255, 255, 255, 0.85);
+}
+
+/* ── Grid item ─────────────────────────────────────────────────────────── */
+.grid-item {
+    aspect-ratio: 1;
+    border-radius: 50%;
+    position: relative;  /* needed for pin-badge */
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.01));
+    border: 1px solid var(--glass-border);
+    transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    cursor: pointer;
+    box-shadow: inset 0 0 20px rgba(0, 0, 0, 0.2);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    padding: 10px;
+}
+
+.item-text {
+    font-size: 1.2rem;
+    font-weight: 600;
+    color: var(--text-color);
+    opacity: 0.8;
+    transition: all 0.3s ease;
+    word-break: break-word;
+    /* Allow long words to wrap if needed */
+}
+
+.grid-item:hover {
+    background: var(--hover-bg);
+    transform: translateY(-8px) scale(1.04);
+    border-color: var(--accent-color);
+    box-shadow: 0 15px 30px rgba(0, 0, 0, 0.3), inset 0 0 15px rgba(88, 166, 255, 0.1);
+}
+
+.grid-item:hover .item-text {
+    opacity: 1;
+    color: var(--accent-color);
+    transform: scale(1.05);
+}
+
+/* ── Detail View ─────────────────────────────────────────────────────────── */
+
+/* detail-view uses base .view styles — no override needed */
+
+.detail-title {
+    margin-bottom: 16px;
+}
+
+.back-button {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    color: var(--accent-color);
+    font-size: 0.9rem;
+    font-weight: 400;
+    padding: 8px 16px 8px 10px;
+    border-radius: 20px;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.back-button:hover {
+    background: var(--hover-bg);
+    border-color: var(--accent-color);
+    transform: translateX(-2px);
+}
+
+.detail-title {
+    font-size: 1.6rem;
+    font-weight: 600;
+    color: var(--text-color);
+    opacity: 0.9;
+    text-transform: capitalize;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Mixed content area: sub-bubbles + idea rows side by side */
+.detail-content {
+    display: flex;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    gap: 28px;
+    height: calc(100% - 56px);
+    overflow-y: auto;
+    padding: 8px 4px 24px;
+}
+
+.detail-content::-webkit-scrollbar { width: 8px; }
+.detail-content::-webkit-scrollbar-track { background: transparent; }
+.detail-content::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,0.1);
+    border-radius: 20px;
+}
+.detail-content::-webkit-scrollbar-thumb:hover {
+    background: rgba(88,166,255,0.3);
+}
+
+/* Summary card — shown at the top of a group/subgroup detail view when AI has generated one */
+.summary-card {
+    width: 100%;
+    padding: 16px 20px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, rgba(88,166,255,0.08), rgba(88,166,255,0.03));
+    border: 1px solid rgba(88,166,255,0.3);
+    flex-shrink: 0;
+}
+
+.summary-card-label {
+    display: block;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--accent-color);
+    opacity: 0.8;
+    margin-bottom: 6px;
+}
+
+.summary-card-text {
+    margin: 0;
+    font-size: 0.9rem;
+    line-height: 1.55;
+    color: var(--text-color);
+    opacity: 0.85;
+}
+
+/* Sub-bubble (subgroup) */
+.sub-bubble {
+    width: 130px;
+    height: 130px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, rgba(255,255,255,0.05), rgba(255,255,255,0.02));
+    border: 1px solid var(--glass-border);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    padding: 14px;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: all 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    box-shadow: inset 0 0 16px rgba(0,0,0,0.2);
+}
+
+.sub-bubble:hover {
+    background: var(--hover-bg);
+    border-color: var(--accent-color);
+    transform: translateY(-6px) scale(1.06);
+    box-shadow: 0 12px 28px rgba(0,0,0,0.3), inset 0 0 12px rgba(88,166,255,0.1);
+}
+
+.sub-bubble-text {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-color);
+    opacity: 0.8;
+    word-break: break-word;
+    transition: all 0.25s ease;
+}
+
+.sub-bubble:hover .sub-bubble-text {
+    opacity: 1;
+    color: var(--accent-color);
+}
+
+.sub-bubble-count {
+    font-size: 0.65rem;
+    color: var(--accent-color);
+    opacity: 0.6;
+    margin-top: 4px;
+}
+
+/* Idea row */
+.idea-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    width: 100%;
+    padding: 12px 18px;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 12px;
+    transition: all 0.25s ease;
+    flex-shrink: 0;
+}
+
+.idea-item:hover {
+    background: var(--hover-bg);
+    border-color: rgba(88,166,255,0.4);
+    transform: translateX(4px);
+}
+
+.idea-bullet {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--accent-color);
+    opacity: 0.7;
+    flex-shrink: 0;
+    margin-top: 6px;
+}
+
+.idea-text {
+    font-size: 0.95rem;
+    font-weight: 400;
+    color: var(--text-color);
+    opacity: 0.85;
+    line-height: 1.5;
+    flex: 1;
+}
+
+.idea-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 26px;
+    height: 26px;
+    border-radius: 8px;
+    color: var(--accent-color);
+    opacity: 0.5;
+    transition: opacity 0.2s, background 0.2s;
+    text-decoration: none;
+    margin-left: auto;
+}
+
+.idea-link:hover {
+    opacity: 1;
+    background: rgba(88, 166, 255, 0.15);
+}
+
+/* Empty state */
+.detail-empty {
+    width: 100%;
+    text-align: center;
+    opacity: 0.3;
+    font-size: 0.9rem;
+    margin-top: 40px;
+}

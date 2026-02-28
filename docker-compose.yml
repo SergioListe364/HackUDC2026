@@ -1,0 +1,36 @@
+services:
+  mailhog:
+    image: mailhog/mailhog
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
+  ai-service:
+    build: ./ai-service
+    ports:
+      - "8001:8001"
+    environment:
+      - OLLAMA_HOST=http://host.docker.internal:11434
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  backend:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - AI_SERVICE_URL=http://ai-service:8001
+      - SMTP_HOST=mailhog
+      - SMTP_PORT=1025
+      - NOTIFY_EMAIL=usuario@hackudc.local
+    depends_on:
+      - mailhog
+      - ai-service
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "5002:5002"
+    depends_on:
+      - backend
+      - ai-service
