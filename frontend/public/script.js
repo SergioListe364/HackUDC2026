@@ -186,7 +186,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const gname  = parts[0] || 'Sin grupo';
                 const spname = parts[1] || null;
                 const idea   = entry.summary || entry.content || '';
-                const ideaObj = { text: idea, url: entry.source_url || null };
+                const ideaObj = { text: idea, url: entry.source_url || null, id: entry.id };
 
                 if (!map[gname]) map[gname] = { name: gname, ideas: [], subgroups: {} };
                 if (spname) {
@@ -277,18 +277,186 @@ document.addEventListener('DOMContentLoaded', () => {
         const menu = document.createElement('div');
         menu.className = 'pin-context-menu';
         const pinned = isPinned(groupName);
-        menu.innerHTML = `<button class="pin-menu-item">${pinned ? '\uD83D\uDCCC Desanclar' : '\uD83D\uDCCC Anclar'}</button>`;
+        menu.innerHTML = `
+            <button class="pin-menu-item">${pinned ? '\uD83D\uDCCC Desanclar' : '\uD83D\uDCCC Anclar'}</button>
+            <button class="pin-menu-item">\u270F\uFE0F Editar</button>
+            <div class="pin-menu-separator"></div>
+            <button class="pin-menu-item pin-menu-item--danger">\uD83D\uDDD1\uFE0F Eliminar</button>
+        `;
         menu.style.left = `${e.clientX}px`;
         menu.style.top  = `${e.clientY}px`;
-        menu.querySelector('button').addEventListener('click', ev => {
+        const [pinBtn, editBtn, delBtn] = menu.querySelectorAll('button');
+        pinBtn.addEventListener('click', ev => {
             ev.stopPropagation();
             if (pinned) removePin(groupName); else savePin(groupName);
             closeCtxMenu();
             loadGroups();
         });
+        editBtn.addEventListener('click', ev => {
+            ev.stopPropagation();
+            closeCtxMenu();
+            showEditModal(e.clientX, e.clientY, groupName, newName => {
+                fetch(`${BACKEND_URL}/groups/${encodeURIComponent(groupName)}`, {
+                    method:  'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body:    JSON.stringify({ new_name: newName }),
+                }).then(() => {
+                    if (isPinned(groupName)) {
+                        const ts = pinnedGroups[groupName];
+                        removePin(groupName);
+                        pinnedGroups[newName] = ts;
+                        localStorage.setItem('brain_pins', JSON.stringify(pinnedGroups));
+                    }
+                    loadGroups();
+                }).catch(() => {});
+            });
+        });
+        delBtn.addEventListener('click', ev => {
+            ev.stopPropagation();
+            closeCtxMenu();
+            fetch(`${BACKEND_URL}/groups/${encodeURIComponent(groupName)}`, { method: 'DELETE' })
+                .then(() => {
+                    removePin(groupName);
+                    loadGroups();
+                })
+                .catch(() => {});
+        });
         document.body.appendChild(menu);
         _ctxMenu = menu;
         // Keep inside viewport
+        const r = menu.getBoundingClientRect();
+        if (r.right  > window.innerWidth)  menu.style.left = `${e.clientX - r.width}px`;
+        if (r.bottom > window.innerHeight) menu.style.top  = `${e.clientY - r.height}px`;
+    }
+
+    // ── Edit modal ────────────────────────────────────────────────────────────
+    let _editModal = null;
+    function closeEditModal() {
+        if (_editModal) { _editModal.remove(); _editModal = null; }
+    }
+    function showEditModal(x, y, currentValue, onSave) {
+        closeEditModal();
+        const modal = document.createElement('div');
+        modal.className = 'edit-modal';
+        const safeVal = currentValue.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+        modal.innerHTML = `
+            <input class="edit-modal-input" type="text" value="${safeVal}" />
+            <div class="edit-modal-actions">
+                <button class="edit-modal-btn edit-modal-save">\u2713 Guardar</button>
+                <button class="edit-modal-btn edit-modal-cancel">\u2715 Cancelar</button>
+            </div>
+        `;
+        modal.style.left = `${x}px`;
+        modal.style.top  = `${y}px`;
+        modal.addEventListener('click', ev => ev.stopPropagation());
+        document.body.appendChild(modal);
+        _editModal = modal;
+        const input     = modal.querySelector('.edit-modal-input');
+        const saveBtn   = modal.querySelector('.edit-modal-save');
+        const cancelBtn = modal.querySelector('.edit-modal-cancel');
+        input.focus();
+        input.select();
+        const doSave = () => {
+            const val = input.value.trim();
+            if (val && val !== currentValue) onSave(val);
+            closeEditModal();
+        };
+        saveBtn.addEventListener('click', doSave);
+        cancelBtn.addEventListener('click', closeEditModal);
+        input.addEventListener('keydown', e => {
+            if (e.key === 'Enter')  { e.preventDefault(); doSave(); }
+            if (e.key === 'Escape') { e.preventDefault(); closeEditModal(); }
+            e.stopPropagation();
+        });
+        requestAnimationFrame(() => {
+            const r = modal.getBoundingClientRect();
+            if (r.right  > window.innerWidth)  modal.style.left = `${x - r.width}px`;
+            if (r.bottom > window.innerHeight) modal.style.top  = `${y - r.height}px`;
+        });
+        setTimeout(() => {
+            const closeOut = ev => { closeEditModal(); };
+            document.addEventListener('click', closeOut, { once: true });
+        }, 0);
+    }
+
+    // ── Context menu for subgroup bubbles ─────────────────────────────────────
+    function showSubCtxMenu(e, item) {
+        e.preventDefault();
+        closeCtxMenu();
+        const parentFrame  = navStack[navStack.length - 1];
+        const parentOrig   = parentFrame._orig || parentFrame.title;
+        const subgroupOrig = item._orig || item.name;
+        const menu = document.createElement('div');
+        menu.className = 'pin-context-menu';
+        menu.innerHTML = `
+            <button class="pin-menu-item">\u270F\uFE0F Editar</button>
+            <div class="pin-menu-separator"></div>
+            <button class="pin-menu-item pin-menu-item--danger">\uD83D\uDDD1\uFE0F Eliminar</button>
+        `;
+        menu.style.left = `${e.clientX}px`;
+        menu.style.top  = `${e.clientY}px`;
+        const [editBtn, delBtn] = menu.querySelectorAll('button');
+        editBtn.addEventListener('click', ev => {
+            ev.stopPropagation();
+            closeCtxMenu();
+            showEditModal(e.clientX, e.clientY, item.name, newName => {
+                fetch(`${BACKEND_URL}/groups/${encodeURIComponent(parentOrig)}/subgroups/${encodeURIComponent(subgroupOrig)}`, {
+                    method:  'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body:    JSON.stringify({ new_name: newName }),
+                }).then(() => { navStack = []; showView('projects-view'); loadGroups(); }).catch(() => {});
+            });
+        });
+        delBtn.addEventListener('click', ev => {
+            ev.stopPropagation();
+            closeCtxMenu();
+            fetch(`${BACKEND_URL}/groups/${encodeURIComponent(parentOrig)}/subgroups/${encodeURIComponent(subgroupOrig)}`, { method: 'DELETE' })
+                .then(() => { navStack = []; showView('projects-view'); loadGroups(); })
+                .catch(() => {});
+        });
+        document.body.appendChild(menu);
+        _ctxMenu = menu;
+        const r = menu.getBoundingClientRect();
+        if (r.right  > window.innerWidth)  menu.style.left = `${e.clientX - r.width}px`;
+        if (r.bottom > window.innerHeight) menu.style.top  = `${e.clientY - r.height}px`;
+    }
+
+    // ── Context menu for idea rows ─────────────────────────────────────────────
+    function showIdeaCtxMenu(e, item) {
+        e.preventDefault();
+        closeCtxMenu();
+        const menu = document.createElement('div');
+        menu.className = 'pin-context-menu';
+        menu.innerHTML = `
+            <button class="pin-menu-item">\u270F\uFE0F Editar</button>
+            <div class="pin-menu-separator"></div>
+            <button class="pin-menu-item pin-menu-item--danger">\uD83D\uDDD1\uFE0F Eliminar</button>
+        `;
+        menu.style.left = `${e.clientX}px`;
+        menu.style.top  = `${e.clientY}px`;
+        const [editBtn, delBtn] = menu.querySelectorAll('button');
+        editBtn.addEventListener('click', ev => {
+            ev.stopPropagation();
+            closeCtxMenu();
+            if (!item.id) return;
+            showEditModal(e.clientX, e.clientY, item.text, newText => {
+                fetch(`${BACKEND_URL}/inbox/${item.id}`, {
+                    method:  'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body:    JSON.stringify({ summary: newText }),
+                }).then(() => { navStack = []; showView('projects-view'); loadGroups(); }).catch(() => {});
+            });
+        });
+        delBtn.addEventListener('click', ev => {
+            ev.stopPropagation();
+            closeCtxMenu();
+            if (!item.id) return;
+            fetch(`${BACKEND_URL}/inbox/${item.id}`, { method: 'DELETE' })
+                .then(() => { navStack = []; showView('projects-view'); loadGroups(); })
+                .catch(() => {});
+        });
+        document.body.appendChild(menu);
+        _ctxMenu = menu;
         const r = menu.getBoundingClientRect();
         if (r.right  > window.innerWidth)  menu.style.left = `${e.clientX - r.width}px`;
         if (r.bottom > window.innerHeight) menu.style.top  = `${e.clientY - r.height}px`;
@@ -343,7 +511,8 @@ document.addEventListener('DOMContentLoaded', () => {
         for (const idea of (node.ideas || [])) {
             const text = (idea && typeof idea === 'object') ? idea.text : idea;
             const url  = (idea && typeof idea === 'object') ? (idea.url  || null) : null;
-            items.push({ type: 'idea', text, url });
+            const id   = (idea && typeof idea === 'object') ? (idea.id   || null) : null;
+            items.push({ type: 'idea', text, url, id });
         }
         return items;
     }
@@ -419,11 +588,13 @@ document.addEventListener('DOMContentLoaded', () => {
                         type: 'idea',
                         text: (idea && typeof idea === 'object') ? idea.text : idea,
                         url:  (idea && typeof idea === 'object') ? (idea.url  || null) : null,
+                        id:   (idea && typeof idea === 'object') ? (idea.id   || null) : null,
                     }));
                     const rawSummary  = summariesMap[`${parentOrig}/${itemOrig}`] || null;
                     const subSummary  = rawSummary ? (transCache[rawSummary] || rawSummary) : null;
                     pushDetail(item.name, subItems, parentFrame.title, subSummary, itemOrig);
                 });
+                bubble.addEventListener('contextmenu', e => showSubCtxMenu(e, item));
                 detailContent.appendChild(bubble);
             } else {
                 // ── Idea row ──────────────────────────────────────────────────
@@ -439,6 +610,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 row.appendChild(bullet);
                 row.appendChild(txt);
+                row.addEventListener('contextmenu', e => showIdeaCtxMenu(e, item));
 
                 if (item.url) {
                     const link = document.createElement('a');

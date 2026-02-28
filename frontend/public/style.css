@@ -426,6 +426,86 @@ body {
     background: rgba(88, 166, 255, 0.12);
 }
 
+.pin-menu-item--danger {
+    color: #ff7b7b;
+}
+
+.pin-menu-item--danger:hover {
+    background: rgba(255, 80, 80, 0.15);
+    color: #ff5050;
+}
+
+.pin-menu-separator {
+    height: 1px;
+    background: rgba(255, 255, 255, 0.08);
+    margin: 4px 8px;
+}
+
+/* ── Edit modal ─────────────────────────────────────────────── */
+.edit-modal {
+    position: fixed;
+    z-index: 1000;
+    background: rgba(20, 22, 35, 0.97);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(88, 166, 255, 0.35);
+    border-radius: 10px;
+    padding: 10px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+    min-width: 260px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    animation: ctx-in 0.12s ease;
+}
+
+.edit-modal-input {
+    width: 100%;
+    background: rgba(255, 255, 255, 0.07);
+    border: 1px solid rgba(88, 166, 255, 0.3);
+    border-radius: 6px;
+    color: var(--text-color);
+    font-size: 0.88rem;
+    padding: 7px 10px;
+    outline: none;
+}
+
+.edit-modal-input:focus {
+    border-color: rgba(88, 166, 255, 0.7);
+}
+
+.edit-modal-actions {
+    display: flex;
+    gap: 6px;
+}
+
+.edit-modal-btn {
+    flex: 1;
+    padding: 6px 10px;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.82rem;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.edit-modal-save {
+    background: rgba(88, 166, 255, 0.2);
+    color: #58a6ff;
+}
+
+.edit-modal-save:hover {
+    background: rgba(88, 166, 255, 0.38);
+}
+
+.edit-modal-cancel {
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-color);
+}
+
+.edit-modal-cancel:hover {
+    background: rgba(255, 255, 255, 0.12);
+}
+
 /* ── Reminders bar (fixed bottom) ────────────────────────────────────── */
 .reminders-section {
     position: fixed;

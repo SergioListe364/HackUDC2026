@@ -479,6 +479,58 @@ def discard_entry(entry_id: int, db: Session = Depends(get_db)):
     db.commit()
 
 
+@app.delete("/groups/{group_name}", status_code=204)
+def delete_group(group_name: str, db: Session = Depends(get_db)):
+    """Marca como descartadas todas las entradas cuyo primer tag coincide con group_name."""
+    entries = db.query(InboxEntry).filter(InboxEntry.status == "processed").all()
+    for entry in entries:
+        parts = [t.strip() for t in (entry.tags or "").split(",") if t.strip()]
+        if parts and parts[0] == group_name:
+            entry.status = "discarded"
+    db.commit()
+
+
+class GroupRename(BaseModel):
+    new_name: str
+
+
+@app.patch("/groups/{group_name}", status_code=200)
+def rename_group(group_name: str, body: GroupRename, db: Session = Depends(get_db)):
+    """Renombra un grupo actualizando los tags de todas sus entradas."""
+    entries = db.query(InboxEntry).filter(InboxEntry.status == "processed").all()
+    for entry in entries:
+        parts = [t.strip() for t in (entry.tags or "").split(",") if t.strip()]
+        if parts and parts[0] == group_name:
+            parts[0] = body.new_name
+            entry.tags = ", ".join(parts)
+    db.commit()
+    return {"renamed": group_name, "new_name": body.new_name}
+
+
+@app.patch("/groups/{group_name}/subgroups/{subgroup_name}", status_code=200)
+def rename_subgroup(group_name: str, subgroup_name: str, body: GroupRename, db: Session = Depends(get_db)):
+    """Renombra un subgrupo actualizando los tags de todas sus entradas."""
+    entries = db.query(InboxEntry).filter(InboxEntry.status == "processed").all()
+    for entry in entries:
+        parts = [t.strip() for t in (entry.tags or "").split(",") if t.strip()]
+        if len(parts) >= 2 and parts[0] == group_name and parts[1] == subgroup_name:
+            parts[1] = body.new_name
+            entry.tags = ", ".join(parts)
+    db.commit()
+    return {"renamed": subgroup_name, "new_name": body.new_name}
+
+
+@app.delete("/groups/{group_name}/subgroups/{subgroup_name}", status_code=204)
+def delete_subgroup(group_name: str, subgroup_name: str, db: Session = Depends(get_db)):
+    """Descarta todas las entradas de un subgrupo."""
+    entries = db.query(InboxEntry).filter(InboxEntry.status == "processed").all()
+    for entry in entries:
+        parts = [t.strip() for t in (entry.tags or "").split(",") if t.strip()]
+        if len(parts) >= 2 and parts[0] == group_name and parts[1] == subgroup_name:
+            entry.status = "discarded"
+    db.commit()
+
+
 @app.post("/inbox/{entry_id}/ai-classify", response_model=EntryOut)
 def ai_classify_entry(entry_id: int, db: Session = Depends(get_db)):
     """
