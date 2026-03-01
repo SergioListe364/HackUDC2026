@@ -311,6 +311,7 @@ document.addEventListener('DOMContentLoaded', () => {
         menu.innerHTML = `
             ${isSuper ? '' : `<button class="pin-menu-item">${pinned ? '\uD83D\uDCCC Desanclar' : '\uD83D\uDCCC Anclar'}</button>`}
             <button class="pin-menu-item">\u270F\uFE0F Editar</button>
+            ${isSuper ? `<button class="pin-menu-item">\uD83D\uDCDD Editar fuente</button>` : ''}
             <div class="pin-menu-separator"></div>
             <button class="pin-menu-item pin-menu-item--danger">\uD83D\uDDD1\uFE0F Eliminar</button>
         `;
@@ -326,7 +327,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 loadGroups();
             });
         }
-        btns[btnIdx++].addEventListener('click', ev => {   // edit
+        btns[btnIdx++].addEventListener('click', ev => {   // edit (rename)
             ev.stopPropagation();
             closeCtxMenu();
             showEditModal(e.clientX, e.clientY, groupName, newName => {
@@ -346,6 +347,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 }).catch(() => {});
             });
         });
+        if (isSuper) {
+            btns[btnIdx++].addEventListener('click', ev => {   // edit source
+                ev.stopPropagation();
+                closeCtxMenu();
+                showSourceEditor(groupName);
+            });
+        }
         btns[btnIdx++].addEventListener('click', ev => {   // delete
             ev.stopPropagation();
             closeCtxMenu();
@@ -415,6 +423,108 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // ── Context menu for subgroup bubbles ─────────────────────────────────────
+
+    // ── Source editor (for super-bubbles) ────────────────────────────────────
+    let _sourceEditorOverlay = null;
+
+    function closeSourceEditor() {
+        if (_sourceEditorOverlay) { _sourceEditorOverlay.remove(); _sourceEditorOverlay = null; }
+    }
+
+    async function showSourceEditor(groupName) {
+        closeSourceEditor();
+
+        // Build overlay
+        const overlay = document.createElement('div');
+        overlay.className = 'source-editor-overlay';
+        overlay.innerHTML = `
+            <div class="source-editor-modal" role="dialog" aria-modal="true">
+                <div class="source-editor-header">
+                    <span class="source-editor-title">
+                        \uD83D\uDCDD Editar fuente &mdash; <span class="source-editor-group-name">${groupName.replace(/</g,'&lt;')}</span>
+                    </span>
+                    <button class="source-editor-close" title="Cerrar">
+                        <svg viewBox="0 0 24 24" width="18" height="18" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                </div>
+                <textarea class="source-editor-textarea" placeholder="Cargando contenido..."></textarea>
+                <div class="source-editor-status"></div>
+                <div class="source-editor-footer">
+                    <span class="source-editor-hint">Edita el texto y la IA reorganizará las ideas del documento automáticamente.</span>
+                    <div class="source-editor-actions">
+                        <button class="source-editor-btn source-editor-btn-cancel">Cancelar</button>
+                        <button class="source-editor-btn source-editor-btn-save" disabled>
+                            <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+                            Guardar y reprocesar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(overlay);
+        _sourceEditorOverlay = overlay;
+
+        const textarea   = overlay.querySelector('.source-editor-textarea');
+        const saveBtn    = overlay.querySelector('.source-editor-btn-save');
+        const cancelBtn  = overlay.querySelector('.source-editor-btn-cancel');
+        const closeBtn   = overlay.querySelector('.source-editor-close');
+        const statusEl   = overlay.querySelector('.source-editor-status');
+
+        const doClose = () => closeSourceEditor();
+        cancelBtn.addEventListener('click', doClose);
+        closeBtn.addEventListener('click',  doClose);
+        overlay.addEventListener('click', e => { if (e.target === overlay) doClose(); });
+        overlay.addEventListener('keydown', e => { if (e.key === 'Escape') doClose(); });
+
+        // Load current source text
+        try {
+            const resp = await fetch(`${BACKEND_URL}/groups/${encodeURIComponent(groupName)}/source-text`);
+            const { text } = await resp.json();
+            textarea.value = text || '';
+            textarea.placeholder = 'Escribe o pega aquí el texto del documento...';
+            saveBtn.disabled = false;
+        } catch {
+            textarea.placeholder = 'Error al cargar el contenido. Puedes escribir aquí directamente.';
+            saveBtn.disabled = false;
+        }
+
+        textarea.focus();
+
+        // Save & reprocess
+        saveBtn.addEventListener('click', async () => {
+            const text = textarea.value.trim();
+            if (!text) return;
+
+            saveBtn.disabled  = true;
+            cancelBtn.disabled = true;
+            textarea.disabled = true;
+            statusEl.textContent = '⏳ Procesando con IA... esto puede tardar unos segundos.';
+
+            try {
+                const resp = await fetch(`${BACKEND_URL}/groups/${encodeURIComponent(groupName)}/reprocess-text`, {
+                    method:  'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body:    JSON.stringify({ text, lang: currentLang }),
+                });
+                if (!resp.ok) {
+                    const err = await resp.json().catch(() => ({}));
+                    throw new Error(err.detail || `Error ${resp.status}`);
+                }
+                const { saved } = await resp.json();
+                statusEl.style.color = '#3fb950';
+                statusEl.textContent = `✓ Listo — ${saved} ideas actualizadas.`;
+                setTimeout(() => { closeSourceEditor(); loadGroups(); }, 1200);
+            } catch (err) {
+                statusEl.style.color = '#f85149';
+                statusEl.textContent = `❌ ${err.message}`;
+                saveBtn.disabled   = false;
+                cancelBtn.disabled = false;
+                textarea.disabled  = false;
+            }
+        });
+    }
+
     function showSubCtxMenu(e, item) {
         e.preventDefault();
         closeCtxMenu();

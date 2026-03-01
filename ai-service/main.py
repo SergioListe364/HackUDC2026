@@ -545,6 +545,41 @@ async def extract_document(file: UploadFile = File(...), lang: str = Form(defaul
     }
 
 
+class ExtractTextRequest(BaseModel):
+    text: str
+    lang: str = "es"
+
+@app.post("/extract-text", tags=["Documentos"])
+async def extract_text(request: ExtractTextRequest):
+    """
+    Recibe texto plano (JSON) y devuelve ideas organizadas en grupos y subgrupos.
+    Misma respuesta que /extract-document pero sin necesidad de subir archivo.
+    """
+    if not is_ollama_running():
+        raise HTTPException(status_code=503, detail="Ollama no está corriendo.")
+
+    text = request.text.strip()
+    if not text:
+        raise HTTPException(status_code=422, detail="El texto está vacío.")
+
+    log.info(f"📝  Procesando texto directo ({len(text)} chars, lang={request.lang})…")
+    try:
+        import asyncio as _asyncio
+        loop = _asyncio.get_event_loop()
+        extractions = await loop.run_in_executor(
+            None, lambda: _extract_ideas_from_document(text, lang=request.lang)
+        )
+    except Exception as exc:
+        log.error(f"❌  Error extrayendo ideas de texto: {exc}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    log.info(f"✅  Extraídas {len(extractions)} ideas del texto")
+    return {
+        "total_chars": len(text),
+        "extractions": extractions,
+    }
+
+
 # ── Traducción ────────────────────────────────────────────────────────────────
 
 class TranslateRequest(BaseModel):

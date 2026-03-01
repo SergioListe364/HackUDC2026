@@ -507,6 +507,98 @@ def delete_group(group_name: str, db: Session = Depends(get_db)):
     db.commit()
 
 
+@app.get("/groups/{group_name}/source-text")
+def get_group_source_text(group_name: str, db: Session = Depends(get_db)):
+    """Devuelve el texto fuente concatenado de todas las entradas de un grupo (super-burbuja)."""
+    entries = db.query(InboxEntry).filter(InboxEntry.status == "processed").all()
+    texts = []
+    for entry in entries:
+        parts = [t.strip() for t in (entry.tags or "").split(",") if t.strip()]
+        if parts and parts[0] == group_name:
+            # Prefer content (original text), fall back to summary
+            text = entry.content or entry.summary or ""
+            if text:
+                texts.append(text)
+    combined = "\n\n".join(texts)
+    return {"group": group_name, "text": combined, "entry_count": len(texts)}
+
+
+class ReprocessTextIn(BaseModel):
+    text: str
+    lang: str = "es"
+
+
+@app.post("/groups/{group_name}/reprocess-text", status_code=200)
+async def reprocess_group_text(group_name: str, body: "ReprocessTextIn", db: Session = Depends(get_db)):
+    """
+    Recibe texto editado, lo reprocesa con la IA y reemplaza las ideas del grupo.
+    1. Llama al servicio de IA con el texto nuevo
+    2. Descarta todas las entradas actuales del grupo
+    3. Guarda las nuevas ideas extraídas
+    """
+    # 1. Call AI service /extract-text
+    try:
+        async with httpx.AsyncClient(timeout=300) as client:
+            resp = await client.post(
+                f"{_AI_SERVICE_URL}/extract-text",
+                json={"text": body.text, "lang": body.lang},
+            )
+        if resp.status_code == 503:
+            raise HTTPException(status_code=503, detail="Servicio de IA no disponible.")
+        resp.raise_for_status()
+        data = resp.json()
+    except httpx.ConnectError:
+        raise HTTPException(status_code=503, detail="Servicio de IA no disponible.")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    extractions = data.get("extractions", [])
+    if not extractions:
+        raise HTTPException(status_code=422, detail="La IA no encontró ideas en el texto.")
+
+    # 2. Discard existing entries for this group
+    entries = db.query(InboxEntry).filter(InboxEntry.status == "processed").all()
+    for entry in entries:
+        parts = [t.strip() for t in (entry.tags or "").split(",") if t.strip()]
+        if parts and parts[0] == group_name:
+            entry.status = "discarded"
+    db.commit()
+
+    # 3. Save new extractions keeping the same group name (super-bubble)
+    distinct_groups = list({e.get("group", "") for e in extractions if e.get("group")})
+    saved = 0
+    for item in extractions:
+        if len(distinct_groups) > 2:
+            # Keep super-bubble structure: original group becomes subgroup
+            tags = f"{group_name},{item['group']}" if item.get("group") else group_name
+            idea = f"[{item['subgroup']}] {item['idea']}" if item.get("subgroup") else item.get("idea", "")
+        else:
+            tags = f"{group_name},{item.get('subgroup')}" if item.get("subgroup") else group_name
+            idea = item.get("idea", "")
+
+        if not idea:
+            continue
+        db_entry = InboxEntry(
+            content=idea,
+            origin="document",
+            type="note",
+            summary=idea,
+            tags=tags,
+            status="processed",
+            processed_at=datetime.now(timezone.utc),
+        )
+        db.add(db_entry)
+        try:
+            db.commit()
+            saved += 1
+        except IntegrityError:
+            db.rollback()
+
+    return {"group": group_name, "saved": saved, "total_extractions": len(extractions)}
+
+
 class GroupRename(BaseModel):
     new_name: str
 
